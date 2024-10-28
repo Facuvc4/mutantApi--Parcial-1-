@@ -8,7 +8,7 @@ COPY . .
 RUN chmod +x ./gradlew
 RUN ./gradlew bootJar --no-daemon
 
-FROM openjdk:20-alpine
+FROM openjdk:17-alpine
 
 EXPOSE 9000
 
