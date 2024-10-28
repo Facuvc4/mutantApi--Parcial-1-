@@ -1,71 +1,107 @@
 package com.example.mutantApi.services;
 
-import com.example.mutantApi.dtos.StatsResponseDto;
 import com.example.mutantApi.entities.Dna;
 import com.example.mutantApi.repositories.DnaRepository;
-import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 
 import java.util.Optional;
 
-import static com.example.mutantApi.helpers.DnaHelper.checkSequence;
-import static com.example.mutantApi.helpers.DnaHelper.sequenceLength;
 
 @Service
 public class DnaService {
+    private final DnaRepository dnaRepository;
+    private static final String VALID_CHARACTERS = "ACTG";
+    private static final int REQUIRED_MUTANT_SEQUENCES = 2;
 
-    @Autowired
-    DnaRepository dnaRepository;
+    public DnaService(DnaRepository dnaRepository) {
+        this.dnaRepository = dnaRepository;
+    }
 
-    public boolean isMutant(String[] dna) {
+    public boolean analyzeDna(String[] dna){
+        boolean isValid = validateDna(dna);
+        if (isValid){
+            return checkDna(dna);
+        }
+        return false;
+    }
+    public static boolean validateDna(String[] dna){
+        int n = dna.length;
+        if (n == 0)return false;
+        if(dna == null)return false;
+        for (String sequence: dna){
+            if (n != sequence.length() || sequence == null)return false;
+            sequence.toCharArray();
+            for (char c : sequence.toCharArray()){
+                if (VALID_CHARACTERS.indexOf(c) == -1) return false;
+            }
+        }
+        return true;
 
-        Optional<Dna> existingDna = dnaRepository.findByDnaSequence(dna);
-
-        if (existingDna.isPresent()) {
-            return existingDna.get().getIsMutant();
+    }
+    public boolean checkDna(String[] dnaSequence){
+        Optional<Dna> optionalDna = dnaRepository.findByDnaSequence(dnaSequence);
+        Dna dna;
+        if(optionalDna.isPresent()){
+            dna = optionalDna.get();
+            return dna.getIsMutant();
         }
 
+        boolean isMutant = isMutant(dnaSequence);
 
+        dna = Dna.builder()
+                .dnaSequence(dnaSequence)
+                .isMutant(isMutant)
+                .build();
+        dnaRepository.save(dna);
+        return dna.getIsMutant();
+    }
+    public static boolean isMutant (String[] dna) {
+
+        int sequenceCounter = 0;
         int n = dna.length;
-        int mutantSequences = 0;
+
+        char[][] dnaMatrix = new char[n][];
+
 
         for (int i = 0; i < n; i++) {
-            for (int j = 0; j < n; j++) {
+            dnaMatrix[i] = dna[i].toCharArray();
+        }
 
-                if (j <= n - sequenceLength && checkSequence(dna, i, j, 0, 1)) {
-                    mutantSequences++;
+        for (int i = 0;  i < n ; i++) {
+            for (int j = 0; j < n ; j++) {
+                //checkRows
+                if (j + 3 < n &&
+                        dnaMatrix[i][j] == dnaMatrix[i][j + 1] &&
+                        dnaMatrix[i][j] == dnaMatrix[i][j + 2] &&
+                        dnaMatrix[i][j] == dnaMatrix[i][j + 3]) {
+                    sequenceCounter++;
                 }
-
-                if (i <= n - sequenceLength && checkSequence(dna, i, j, 1, 0)) {
-                    mutantSequences++;
+                //checkColumn
+                if (i + 3 < n &&
+                        dnaMatrix[i][j] == dnaMatrix[i + 1][j] &&
+                        dnaMatrix[i][j] == dnaMatrix[i + 2][j] &&
+                        dnaMatrix[i][j] == dnaMatrix[i + 3][j]) {
+                    sequenceCounter++;
                 }
-
-                if (i <= n - sequenceLength && j <= n - sequenceLength && checkSequence(dna, i, j, 1, 1)) {
-                    mutantSequences++;
+                //checkDiagonal left to right
+                if (i + 3 < n && j +3 < n &&
+                        dnaMatrix[i][j] == dnaMatrix[i + 1][j + 1] &&
+                        dnaMatrix[i][j] == dnaMatrix[i + 2][j + 2] &&
+                        dnaMatrix[i][j] == dnaMatrix[i + 3][j + 3]) {
+                    sequenceCounter++;
                 }
-
-                if (i <= n - sequenceLength && j >= sequenceLength - 1 && checkSequence(dna, i, j, 1, -1)) {
-                    mutantSequences++;
+                //checkDiagonal right to left
+                if ((j-3)>=0 && (i + 3)< n &&
+                        dnaMatrix[i][j] == dnaMatrix[i + 1][j - 1] &&
+                        dnaMatrix[i][j] == dnaMatrix[i + 2][j - 2] &&
+                        dnaMatrix[i][j] == dnaMatrix[i + 3][j - 3]) {
+                    sequenceCounter++;
                 }
-
-
-                if (mutantSequences > 1) {
-                    Dna newDnaSequence = Dna.builder().dnaSequence(dna).isMutant(true).build();
-                    dnaRepository.save(newDnaSequence);
+                if (sequenceCounter >= REQUIRED_MUTANT_SEQUENCES){
                     return true;
                 }
             }
         }
-
-        Dna newDnaSequence = Dna.builder().dnaSequence(dna).isMutant(false).build();
-        dnaRepository.save(newDnaSequence);
         return false;
-    }
-
-    public StatsResponseDto getStats() {
-        long countMutant = dnaRepository.countByIsMutant(true);
-        long countHuman = dnaRepository.countByIsMutant(false);
-        double ratio = (countHuman == 0) ? 0 : (double) countMutant / countHuman;
-        return StatsResponseDto.builder().count_human_dna(countHuman).count_mutant_dna(countMutant).ratio(ratio).build();
     }
 }
